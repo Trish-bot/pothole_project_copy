@@ -1,146 +1,81 @@
+// src/pages/Signup.jsx
 
-// import { useState } from "react";
-// import { Link, useNavigate } from "react-router-dom";
-// import { MapPin } from "lucide-react";
-// import Header from "../components/Header";
-// import Button from "../components/ui/Button";
-// import Input from "../components/ui/Input";
-// import Label from "../components/ui/Label";
-// import InputOTP from "../components/ui/InputOTP";
-
-// const SignUp = () => {
-//   const [email, setEmail] = useState("");
-//   const [otpSent, setOtpSent] = useState(false);
-//   const [otp, setOtp] = useState("");
-//   const navigate = useNavigate();
-
-//   const handleSendOtp = (e) => {
-//     e.preventDefault();
-//     if (email) setOtpSent(true);
-//   };
-
-//   const handleVerifyOtp = (e) => {
-//     e.preventDefault();
-//     if (otp.length === 6) navigate("/dashboard");
-//   };
-
-//   return (
-//     <div className="min-h-screen flex flex-col bg-gray-50">
-
-//       {/* <Header /> */}
-
-//       <main className="flex flex-1 items-center justify-center px-6 py-12">
-
-//         <div className="w-full max-w-md bg-white border rounded-2xl shadow-sm p-10">
-
-//           {/* Title */}
-//           <div className="text-center mb-10">
-//             <MapPin className="mx-auto mb-4 text-gray-800" size={36} />
-//             <h2 className="text-3xl font-bold text-gray-900">
-//               Create Your Account
-//             </h2>
-//             <p className="text-sm text-gray-600 mt-2">
-//               Join RoadWatch and start reporting roads
-//             </p>
-//           </div>
-
-//           {/* Form */}
-//           {!otpSent ? (
-//             <form onSubmit={handleSendOtp} className="space-y-6">
-
-//               <div>
-//                 <Label>Email Address</Label>
-//                 <Input
-//                   type="email"
-//                   placeholder="Enter email address"
-//                   value={email}
-//                   onChange={(e) => setEmail(e.target.value)}
-//                   className="mt-2"
-//                 />
-//               </div>
-
-//               <Button
-//                 type="submit"
-//                 className="w-full bg-gray-900 hover:bg-gray-800 text-white py-3"
-//               >
-//                 Send OTP
-//               </Button>
-
-//             </form>
-//           ) : (
-//             <form onSubmit={handleVerifyOtp} className="space-y-6">
-
-//               <p className="text-sm text-center text-gray-600">
-//                 Enter OTP sent to{" "}
-//                 <span className="font-medium text-gray-900">{email}</span>
-//               </p>
-
-//               <InputOTP value={otp} onChange={setOtp} />
-
-//               <Button
-//                 type="submit"
-//                 disabled={otp.length < 6}
-//                 className="w-full bg-gray-900 hover:bg-gray-800 text-white py-3 disabled:opacity-50"
-//               >
-//                 Verify & Create Account
-//               </Button>
-
-//               <button
-//                 type="button"
-//                 onClick={() => setOtpSent(false)}
-//                 className="text-sm text-gray-600 hover:text-gray-900 underline w-full"
-//               >
-//                 Change Email
-//               </button>
-
-//             </form>
-//           )}
-
-//           {/* Login Link */}
-//           <p className="text-center text-sm mt-10 text-gray-600">
-//             Already have an account?{" "}
-//             <Link
-//               to="/login"
-//               className="font-medium text-gray-900 hover:underline"
-//             >
-//               Sign In
-//             </Link>
-//           </p>
-
-//         </div>
-
-//       </main>
-//     </div>
-//   );
-// };
-
-// export default SignUp;import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { MapPin } from "lucide-react";
 import { useState } from "react";
+
 import Button from "../components/ui/Button";
 import Input from "../components/ui/Input";
 import Label from "../components/ui/Label";
 import InputOTP from "../components/ui/InputOTP";
-import Dashboard from "./Dashboard"; // 👈 IMPORT ADDED
 
-const Login = () => {
+import { sendOtpAPI, verifyOtpAPI } from "../api/auth";
+
+const Signup = () => {
+
   const [email, setEmail] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   const [otp, setOtp] = useState("");
+  const [loading, setLoading] = useState(false);
+
   const navigate = useNavigate();
 
-  const handleSendOtp = (e) => {
+  // ================= SEND OTP =================
+  const handleSendOtp = async (e) => {
     e.preventDefault();
-    if (email) setOtpSent(true);
+
+    if (!email) {
+      alert("Enter email first");
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const res = await sendOtpAPI(email);
+
+      console.log("OTP sent:", res.data);
+
+      setOtpSent(true);
+      setOtp("");
+
+      alert("OTP sent successfully 📩");
+
+    } catch (err) {
+      console.error(err);
+      alert("Failed to send OTP");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleVerifyOtp = (e) => {
+  // ================= VERIFY OTP =================
+  const handleVerifyOtp = async (e) => {
     e.preventDefault();
 
-    // 🔥 ANY 4 DIGIT OTP WILL WORK
-    if (otp.length === 4) {
+    if (otp.length < 4) {
+      alert("Enter valid OTP");
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const res = await verifyOtpAPI(email, otp);
+
+      const token = res.data.token;
+
+      localStorage.setItem("token", token);
+
+      alert("Signup successful 🎉");
+
       navigate("/dashboard");
+
+    } catch (err) {
+      console.error(err);
+      alert("Invalid / Expired OTP");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -154,15 +89,18 @@ const Login = () => {
           <div className="text-center mb-10">
             <MapPin className="mx-auto mb-4 text-gray-800" size={36} />
             <h2 className="text-3xl font-bold text-gray-900">
-              Login to RoadWatch
+              SignUp to RoadWatch
             </h2>
           </div>
 
           {!otpSent ? (
+
+            // EMAIL INPUT
             <form onSubmit={handleSendOtp} className="space-y-6">
 
               <div>
                 <Label>Email Address</Label>
+
                 <Input
                   type="email"
                   placeholder="Enter email address"
@@ -174,13 +112,17 @@ const Login = () => {
 
               <Button
                 type="submit"
+                disabled={loading}
                 className="w-full bg-gray-900 hover:bg-gray-800 text-white py-3"
               >
-                Send OTP
+                {loading ? "Sending..." : "Send OTP"}
               </Button>
 
             </form>
+
           ) : (
+
+            // OTP INPUT
             <form onSubmit={handleVerifyOtp} className="space-y-6">
 
               <p className="text-sm text-center text-gray-600">
@@ -191,27 +133,28 @@ const Login = () => {
               <InputOTP
                 value={otp}
                 onChange={setOtp}
-                maxLength={4}   // 👈 4 DIGIT
+                maxLength={4}
               />
 
               <Button
                 type="submit"
-                disabled={otp.length < 4}
-                className="w-full bg-gray-900 hover:bg-gray-800 text-white py-3 disabled:opacity-50"
+                disabled={otp.length < 4 || loading}
+                className="w-full bg-gray-900 hover:bg-gray-800 text-white py-3"
               >
-                Verify & Login
+                {loading ? "Verifying..." : "Verify & Signup"}
               </Button>
 
             </form>
+
           )}
 
           <p className="text-center text-sm mt-10 text-gray-600">
-            Don’t have an account?{" "}
+            Already have an account?{" "}
             <Link
-              to="/signup"
+              to="/login"
               className="font-medium text-gray-900 hover:underline"
             >
-              Sign Up
+              Sign In
             </Link>
           </p>
 
@@ -222,4 +165,4 @@ const Login = () => {
   );
 };
 
-export default Login;
+export default Signup;

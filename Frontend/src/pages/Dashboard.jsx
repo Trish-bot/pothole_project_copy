@@ -1,166 +1,189 @@
-// import { MapContainer, TileLayer } from "react-leaflet";
-// import "leaflet/dist/leaflet.css";
-
-// export default function Dashboard() {
-//   return (
-//     <div className="min-h-screen flex flex-col bg-gray-400">
-
-//       {/* Top Header */}
-//       <div className="bg-white shadow px-6 py-4">
-//         <h1 className="text-2xl font-bold text-gray-900">
-//           Gurgaon Road Monitoring
-//         </h1>
-//         <p className="text-sm text-gray-600">
-//           Live pothole detection dashboard
-//         </p>
-//       </div>
-
-//       {/* Map Section */}
-//       <div className="flex-1 flex justify-center items-center p-6">
-
-//         {/* TRUE SQUARE MAP */}
-//         <div className="w-[70vh] h-[70vh] bg-white rounded-xl shadow-lg overflow-hidden">
-
-//           <MapContainer
-//             center={[28.4595, 77.0266]}
-//             zoom={12}
-//             style={{ height: "100%", width: "100%" }}
-//           >
-//             <TileLayer
-//               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-//               attribution="&copy; OpenStreetMap contributors"
-//             />
-//           </MapContainer>
-
-//         </div>
-
-//       </div>
-
-//     {/* Risk Section */}
-// <div className="bg-gray-50 border-t px-10 py-10 mt-6">
-
-//   <div className="max-w-4xl mx-auto">
-
-//     <h2 className="text-2xl font-bold text-gray-900 mb-6">
-//       Risk Level Guide
-//     </h2>
-
-//     <div className="grid sm:grid-cols-3 gap-8 text-base text-gray-700">
-
-//       <div className="flex items-center gap-3">
-//         <span className="h-5 w-5 rounded-full bg-red-500"></span>
-//         <span className="font-semibold">High Risk</span>
-//       </div>
-
-//       <div className="flex items-center gap-3">
-//         <span className="h-5 w-5 rounded-full bg-yellow-400"></span>
-//         <span className="font-semibold">Moderate</span>
-//       </div>
-
-//       <div className="flex items-center gap-3">
-//         <span className="h-5 w-5 rounded-full bg-green-500"></span>
-//         <span className="font-semibold">Safe</span>
-//       </div>
-
-//     </div>
-
-//     <p className="text-base text-gray-600 mt-6 leading-relaxed">
-//       Red indicates severely damaged roads requiring immediate action.
-//       Yellow indicates moderate caution areas.
-//       Green indicates safe and well-maintained roads.
-//     </p>
-
-//   </div>
-
-// </div>
-
-//     </div>
-//   );
-// }
-import { MapContainer, TileLayer } from "react-leaflet";
+// src/pages/Dashboard.jsx
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  MapContainer,
+  TileLayer,
+  CircleMarker,
+  Popup,
+  useMap
+} from "react-leaflet";
+import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import "leaflet-routing-machine";
 
+import axios from "axios";
+import { getDashboardAPI } from "../api/auth";
+
+
+// ================= INDIA BOUNDS =================
+const INDIA_BOUNDS = [
+  [6.5, 68],   // south-west
+  [37.5, 97]   // north-east
+];
+
+
+// ================= ROUTE COMPONENT =================
+function Routing({ start, end }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!start || !end) return;
+
+    const routing = L.Routing.control({
+      waypoints: [L.latLng(start), L.latLng(end)],
+      lineOptions: { styles: [{ weight: 5 }] },
+      show: false,
+      addWaypoints: false
+    }).addTo(map);
+
+    return () => map.removeControl(routing);
+  }, [start, end, map]);
+
+  return null;
+}
+
+
+// ================= MAIN =================
 export default function Dashboard() {
+  const navigate = useNavigate();
+
+  const [userEmail, setUserEmail] = useState("");
+  const [potholes, setPotholes] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const [mapCenter, setMapCenter] = useState([22.9734, 78.6569]); // India center
+
+  const [search, setSearch] = useState("");
+  const [start, setStart] = useState(null);
+  const [end, setEnd] = useState(null);
+
+  // ================= AUTH =================
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) return navigate("/login");
+
+    (async () => {
+      try {
+        const res = await getDashboardAPI(token);
+        setUserEmail(res.data.user?.email || "");
+      } catch {
+        navigate("/login");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  // ================= SEARCH LOCATION =================
+  const handleSearch = async () => {
+    if (!search) return;
+
+    const res = await axios.get(
+      `https://nominatim.openstreetmap.org/search?q=${search}&format=json`
+    );
+
+    if (res.data.length > 0) {
+      const lat = parseFloat(res.data[0].lat);
+      const lon = parseFloat(res.data[0].lon);
+      setMapCenter([lat, lon]);
+    }
+  };
+
+  // ================= ROUTE SEARCH =================
+  const handleRoute = async () => {
+    if (!start || !end) return;
+
+    const s = await axios.get(
+      `https://nominatim.openstreetmap.org/search?q=${start}&format=json`
+    );
+    const e = await axios.get(
+      `https://nominatim.openstreetmap.org/search?q=${end}&format=json`
+    );
+
+    if (s.data[0] && e.data[0]) {
+      setStart([+s.data[0].lat, +s.data[0].lon]);
+      setEnd([+e.data[0].lat, +e.data[0].lon]);
+    }
+  };
+
+  const logout = () => {
+    localStorage.removeItem("token");
+    navigate("/login");
+  };
+
+  // ================= UI =================
   return (
     <div className="min-h-screen bg-gray-200">
 
-      {/* Header */}
-      <div className="bg-white shadow px-6 py-4">
-        <h1 className="text-2xl font-bold text-gray-900">
-          Gurgaon Road Monitoring
-        </h1>
-        <p className="text-sm text-gray-600">
-          Live pothole detection dashboard
-        </p>
+      {/* HEADER */}
+      <div className="bg-white shadow p-4 flex justify-between">
+        <h1 className="text-xl font-bold">India Road Monitoring Dashboard</h1>
+        <div className="flex gap-4 items-center">
+          <span className="text-sm">{userEmail}</span>
+          <button onClick={logout} className="bg-red-500 text-white px-3 py-1 rounded">
+            Logout
+          </button>
+        </div>
       </div>
 
-      {/* Main Content: Left + Right */}
-      <div className="flex flex-col lg:flex-row gap-6 p-6">
+      {/* CONTROLS */}
+      <div className="p-4 bg-white flex flex-wrap gap-3">
 
-        {/* ===== Left: Map ===== */}
-        <div className="flex-1">
+        {/* Search */}
+        <input
+          placeholder="Search city / road"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="border p-2 rounded"
+        />
+        <button onClick={handleSearch} className="bg-blue-600 text-white px-3 rounded">
+          Go
+        </button>
 
-          <div className="w-full h-[70vh] bg-white rounded-xl shadow-lg overflow-hidden">
-
-            <MapContainer
-              center={[28.4595, 77.0266]}
-              zoom={12}
-              style={{ height: "100%", width: "100%" }}
-            >
-              <TileLayer
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                attribution="&copy; OpenStreetMap contributors"
-              />
-            </MapContainer>
-
-          </div>
-
-        </div>
-
-        {/* ===== Right: Risk Section ===== */}
-        <div className="w-full lg:w-[350px]">
-
-          <div className="bg-white rounded-xl shadow-lg p-8 h-[70vh] flex flex-col justify-between">
-
-            <div>
-
-              <h2 className="text-xl font-bold text-gray-900 mb-6">
-                Risk Level Guide
-              </h2>
-
-              <div className="space-y-5 text-gray-700 text-base">
-
-                <div className="flex items-center gap-3">
-                  <span className="h-5 w-5 rounded-full bg-red-500"></span>
-                  <span className="font-medium">High Risk</span>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <span className="h-5 w-5 rounded-full bg-yellow-400"></span>
-                  <span className="font-medium">Moderate</span>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <span className="h-5 w-5 rounded-full bg-green-500"></span>
-                  <span className="font-medium">Safe</span>
-                </div>
-
-              </div>
-
-            </div>
-
-            <p className="text-sm text-gray-600 leading-relaxed">
-              This guide helps identify road conditions in Gurgaon.
-              Red shows severe damage, yellow indicates caution,
-              and green represents safe roads.
-            </p>
-
-          </div>
-
-        </div>
-
+        {/* Route */}
+        <input
+          placeholder="From"
+          value={start || ""}
+          onChange={(e) => setStart(e.target.value)}
+          className="border p-2 rounded"
+        />
+        <input
+          placeholder="To"
+          value={end || ""}
+          onChange={(e) => setEnd(e.target.value)}
+          className="border p-2 rounded"
+        />
+        <button onClick={handleRoute} className="bg-green-600 text-white px-3 rounded">
+          Show Route
+        </button>
       </div>
 
+      {/* MAP */}
+      <div className="h-[80vh]">
+        {!loading && (
+          <MapContainer
+            center={mapCenter}
+            zoom={6}
+            maxBounds={INDIA_BOUNDS}
+            style={{ height: "100%", width: "100%" }}
+          >
+            <TileLayer
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+
+            {/* route */}
+            {start && end && <Routing start={start} end={end} />}
+
+            {/* potholes */}
+            {potholes.map((p) => (
+              <CircleMarker key={p.id} center={[p.lat, p.lng]} radius={8}>
+                <Popup>{p.desc}</Popup>
+              </CircleMarker>
+            ))}
+          </MapContainer>
+        )}
+      </div>
     </div>
   );
 }
