@@ -9,22 +9,41 @@ exports.sendOtp = async (req, res) => {
   try {
     const { email } = req.body;
 
+    console.log("📩 OTP request for:", email);
+
     if (!email) {
       return res.status(400).json({ message: "Email is required" });
     }
 
+    // generate OTP
     const otp = generateOtp();
-    const expireAt = new Date(Date.now() + process.env.OTP_EXPIRE_MIN * 60 * 1000);
 
-    // Save OTP
-    await OTP.create({ email, otp, expireAt });
+    console.log("🔑 Generated OTP:", otp);
 
-    // Send email
+    // expiry time
+    const expireAt = new Date(
+      Date.now() + process.env.OTP_EXPIRE_MIN * 60 * 1000
+    );
+
+    // save in DB
+    await OTP.create({
+      email,
+      otp,
+      expireAt,
+    });
+
+    // send email
     await sendEmail(email, otp);
 
-    res.json({ success: true, message: "OTP sent successfully" });
+    console.log("✅ OTP sent successfully");
+
+    res.json({
+      success: true,
+      message: "OTP sent successfully",
+    });
+
   } catch (error) {
-    console.error("Send OTP error:", error);
+    console.error("❌ Send OTP error:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
@@ -34,28 +53,40 @@ exports.verifyOtp = async (req, res) => {
   try {
     const { email, otp } = req.body;
 
+    console.log("🔐 Verifying OTP:", otp);
+
     const record = await OTP.findOne({ email, otp });
 
     if (!record) {
-      return res.status(400).json({ message: "Invalid OTP" });
+      return res.status(400).json({
+        message: "Invalid OTP",
+      });
     }
 
+    // check expiry
     if (record.expireAt < new Date()) {
-      return res.status(400).json({ message: "OTP expired" });
+      return res.status(400).json({
+        message: "OTP expired",
+      });
     }
 
     // Create or get user
-    const user = await User.findOrCreate(email);
+    let user = await User.findOne({ email });
+    if (!user) {
+      user = await User.create({ email });
+    }
 
-    // Create JWT with user ID
+    // create JWT with user ID
     const token = jwt.sign(
       { id: user._id, email: user.email, role: user.role },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
 
-    // Delete used OTP
+    // delete used OTP
     await OTP.deleteOne({ _id: record._id });
+
+    console.log("✅ OTP verified");
 
     res.json({
       success: true,
@@ -67,8 +98,9 @@ exports.verifyOtp = async (req, res) => {
         role: user.role
       }
     });
+
   } catch (error) {
-    console.error("Verify OTP error:", error);
+    console.error("❌ Verify OTP error:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
@@ -77,8 +109,12 @@ exports.verifyOtp = async (req, res) => {
 exports.getProfile = async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select('-__v');
-    res.json({ success: true, user });
+    res.json({
+      success: true,
+      user
+    });
   } catch (error) {
+    console.error("Get profile error:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
@@ -92,8 +128,12 @@ exports.updateProfile = async (req, res) => {
       { name, phone },
       { new: true }
     ).select('-__v');
-    res.json({ success: true, user });
+    res.json({
+      success: true,
+      user
+    });
   } catch (error) {
+    console.error("Update profile error:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
