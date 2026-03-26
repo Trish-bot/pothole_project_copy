@@ -1,11 +1,13 @@
 const mongoose = require('mongoose');
+const constants = require('../config/constants');
 
 const userSchema = new mongoose.Schema({
   email: {
     type: String,
     required: true,
     unique: true,
-    lowercase: true
+    lowercase: true,
+    trim: true
   },
   name: {
     type: String,
@@ -17,8 +19,8 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['user', 'admin', 'maintenance'],
-    default: 'user'
+    enum: Object.values(constants.USER_ROLES),
+    default: constants.USER_ROLES.USER
   },
   potholeContributions: {
     type: Number,
@@ -34,7 +36,7 @@ const userSchema = new mongoose.Schema({
   }
 });
 
-// Auto-create user when OTP is verified (helper method)
+// Find or create user by email
 userSchema.statics.findOrCreate = async function(email) {
   let user = await this.findOne({ email });
   if (!user) {
