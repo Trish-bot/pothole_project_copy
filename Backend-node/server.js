@@ -39,7 +39,23 @@ app.use('/api/potholes', potholeRoutes);
 app.use('/api/roads', roadRoutes);
 app.use('/api/detection', detectionRoutes);
 
-// Socket.io for real-time beep alerts
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ status: 'OK', timestamp: new Date() });
+});
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ success: false, message: 'Route not found' });
+});
+
+// Error handler
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ success: false, message: err.message });
+});
+
+// Socket.io for real-time alerts
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
   
@@ -49,7 +65,6 @@ io.on('connection', (socket) => {
   });
   
   socket.on('pothole-detected', (data) => {
-    // Broadcast to all clients in the session
     io.to(`session-${data.sessionId}`).emit('pothole-alert', {
       location: data.location,
       severity: data.severity,
@@ -60,17 +75,6 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
   });
-});
-
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date() });
-});
-
-// Error handler
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ success: false, message: err.message });
 });
 
 // Connect to MongoDB
@@ -86,3 +90,5 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/pothole_d
     console.error('❌ MongoDB connection error:', err);
     process.exit(1);
   });
+
+module.exports = { app, server, io };
