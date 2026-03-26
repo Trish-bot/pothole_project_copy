@@ -4,6 +4,7 @@ const DetectionSession = require('../models/DetectionSession');
 const { v4: uuidv4 } = require('uuid');
 const fs = require('fs');
 const path = require('path');
+const constants = require('../config/constants');
 
 // Start a new detection session
 exports.startSession = async (req, res) => {
@@ -13,17 +14,17 @@ exports.startSession = async (req, res) => {
       sessionId,
       userId: req.user.id,
       startTime: new Date(),
-      status: 'active'
+      status: constants.SESSION_STATUS.ACTIVE
     });
     
     res.json({
       success: true,
       sessionId: session.sessionId,
-      message: 'Detection session started'
+      message: constants.MESSAGES.SESSION_STARTED
     });
   } catch (error) {
     console.error('Start session error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: constants.MESSAGES.SERVER_ERROR });
   }
 };
 
@@ -34,11 +35,11 @@ exports.endSession = async (req, res) => {
     
     const session = await DetectionSession.findOne({ sessionId });
     if (!session) {
-      return res.status(404).json({ message: 'Session not found' });
+      return res.status(404).json({ message: constants.MESSAGES.NOT_FOUND });
     }
     
     session.endTime = new Date();
-    session.status = 'completed';
+    session.status = constants.SESSION_STATUS.COMPLETED;
     if (route) {
       session.route = {
         type: 'LineString',
@@ -50,12 +51,12 @@ exports.endSession = async (req, res) => {
     
     res.json({
       success: true,
-      message: 'Session completed',
+      message: constants.MESSAGES.SESSION_ENDED,
       stats: session.stats
     });
   } catch (error) {
     console.error('End session error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: constants.MESSAGES.SERVER_ERROR });
   }
 };
 
@@ -66,24 +67,23 @@ exports.detectPothole = async (req, res) => {
       sessionId, 
       location,  // [longitude, latitude]
       severity,
-      confidence,
-      imageBase64  // Base64 image from camera
+      confidence
     } = req.body;
     
-    // Save image if provided
     let imageUrl = null;
-    if (imageBase64) {
-      const imageName = `pothole_${Date.now()}.jpg`;
-      const imagePath = path.join(__dirname, '../uploads', imageName);
-      
-      // Remove data URL prefix if present
-      const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
-      fs.writeFileSync(imagePath, base64Data, 'base64');
-      imageUrl = `/uploads/${imageName}`;
+    
+    // Save image if uploaded
+    if (req.file) {
+      imageUrl = `/uploads/${req.file.filename}`;
     }
     
     // Find or create road segment
     let roadSegment = await findRoadSegment(location);
+    
+    // Validate severity
+    const validSeverity = Object.values(constants.SEVERITY).includes(severity) 
+      ? severity 
+      : constants.SEVERITY.MEDIUM;
     
     // Create pothole record
     const pothole = await Pothole.create({
@@ -92,21 +92,21 @@ exports.detectPothole = async (req, res) => {
         coordinates: location
       },
       imageUrl,
-      severity: severity || 'medium',
+      severity: validSeverity,
       detectionConfidence: confidence || 85,
-      detectionMethod: 'camera',
+      detectionMethod: constants.DETECTION_METHOD.CAMERA,
       detectedBy: req.user.id,
       roadSegment: roadSegment?._id,
-      status: 'detected'
+      status: constants.STATUS.DETECTED
     });
     
     // Update detection session
     if (sessionId) {
       const session = await DetectionSession.findOne({ sessionId });
-      if (session && session.status === 'active') {
+      if (session && session.status === constants.SESSION_STATUS.ACTIVE) {
         session.potholesDetected.push({
           location,
-          severity: severity || 'medium',
+          severity: validSeverity,
           confidence: confidence || 85,
           timestamp: new Date(),
           imageUrl
@@ -114,7 +114,7 @@ exports.detectPothole = async (req, res) => {
         
         // Update stats
         session.stats.totalPotholes++;
-        session.stats[`${severity || 'medium'}Severity`]++;
+        session.stats[`${validSeverity}Severity`]++;
         await session.save();
       }
     }
@@ -127,27 +127,29 @@ exports.detectPothole = async (req, res) => {
     // Get the io instance for real-time alert
     const io = req.app.get('io');
     if (io && sessionId) {
-      io.to(`session-${sessionId}`).emit('pothole-alert', {
+      io.to(`session-${sessionId}`).emit(constants.SOCKET_EVENTS.POTHOLEDETECTED, {
         location,
-        severity: severity || 'medium',
+        severity: validSeverity,
         confidence: confidence || 85,
-        timestamp: new Date()
+        timestamp: new Date(),
+        potholeId: pothole._id
       });
     }
     
     res.json({
       success: true,
+      message: constants.MESSAGES.POTHOLEDETECTED,
       pothole: {
         id: pothole._id,
         location,
-        severity: severity || 'medium',
+        severity: validSeverity,
         imageUrl
       }
     });
     
   } catch (error) {
     console.error('Detection error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: constants.MESSAGES.SERVER_ERROR });
   }
 };
 
@@ -157,7 +159,7 @@ async function findRoadSegment(point) {
     geometry: {
       $near: {
         $geometry: { type: 'Point', coordinates: point },
-        $maxDistance: 50
+        $maxDistance: constants.GEO.DEFAULT_RADIUS_METERS
       }
     }
   }).limit(1);
@@ -172,15 +174,15 @@ async function updateRoadSegmentStats(segmentId) {
   
   const potholes = await Pothole.find({ 
     roadSegment: segmentId,
-    status: { $ne: 'repaired' }
+    status: { $ne: constants.STATUS.REPAIRED }
   });
   
   segment.potholeStats = {
     totalCount: potholes.length,
-    lowCount: potholes.filter(p => p.severity === 'low').length,
-    mediumCount: potholes.filter(p => p.severity === 'medium').length,
-    highCount: potholes.filter(p => p.severity === 'high').length,
-    criticalCount: potholes.filter(p => p.severity === 'critical').length
+    lowCount: potholes.filter(p => p.severity === constants.SEVERITY.LOW).length,
+    mediumCount: potholes.filter(p => p.severity === constants.SEVERITY.MEDIUM).length,
+    highCount: potholes.filter(p => p.severity === constants.SEVERITY.HIGH).length,
+    criticalCount: potholes.filter(p => p.severity === constants.SEVERITY.CRITICAL).length
   };
   
   segment.updateCondition();
